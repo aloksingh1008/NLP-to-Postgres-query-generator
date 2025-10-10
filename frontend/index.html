@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Column Mapper - Developer Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .search-result {
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin: 10px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .exact-match {
+            border-left-color: #28a745;
+        }
+        .fuzzy-match {
+            border-left-color: #ffc107;
+        }
+        .no-match {
+            border-left-color: #dc3545;
+        }
+        .typo-analysis {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .performance-metric {
+            text-align: center;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .quick-test-btn {
+            margin: 2px;
+        }
+        .column-list {
+            background-color: #e3f2fd;
+            padding: 8px;
+            border-radius: 5px;
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .confidence-bar {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+            transition: width 0.3s ease;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-search"></i> Word Column Mapper - Developer Dashboard
+            </span>
+            <span class="navbar-text">
+                <i class="fas fa-server text-success"></i> API Status: <span id="api-status">Checking...</span>
+            </span>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Main Search Interface -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-search"></i> Search Interface</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="input-group mb-3">
+                                    <input type="text" class="form-control" id="search-input" 
+                                           placeholder="Enter a word to search..." maxlength="100">
+                                    <button class="btn btn-primary" type="button" id="search-btn">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <button class="btn btn-outline-secondary" type="button" id="clear-btn">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="include-suggestions" checked>
+                                    <label class="form-check-label" for="include-suggestions">
+                                        Include suggestions
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Natural Language Query Section -->
+                        <div class="mb-4 p-3 bg-light rounded">
+                            <h6><i class="fas fa-brain text-primary"></i> Natural Language Query</h6>
+                            <p class="text-muted small">Describe what you want to find in natural language, and we'll extract relevant words and find the corresponding columns and tables.</p>
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <input type="text" class="form-control" id="nl-query-input" 
+                                           placeholder="e.g., 'Find all users with email addresses created in the last month'">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="password" class="form-control" id="openai-api-key" 
+                                           placeholder="OpenAI API Key">
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <button class="btn btn-primary" type="button" id="nl-query-btn">
+                                    <i class="fas fa-magic"></i> Process with AI
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm" type="button" id="clear-nl-btn">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Quick Test Buttons -->
+                        <div class="mb-3">
+                            <label class="form-label">Quick Test Cases:</label>
+                            <div>
+                                <button class="btn btn-outline-primary btn-sm quick-test-btn" data-query="date">date</button>
+                                <button class="btn btn-outline-primary btn-sm quick-test-btn" data-query="start_date">start_date</button>
+                                <button class="btn btn-outline-primary btn-sm quick-test-btn" data-query="end_date">end_date</button>
+                                <button class="btn btn-outline-warning btn-sm quick-test-btn" data-query="dat">dat</button>
+                                <button class="btn btn-outline-warning btn-sm quick-test-btn" data-query="start_dat">start_dat</button>
+                                <button class="btn btn-outline-warning btn-sm quick-test-btn" data-query="strt_dte">strt_dte</button>
+                                <button class="btn btn-outline-danger btn-sm quick-test-btn" data-query="xyz123">xyz123</button>
+                            </div>
+                        </div>
+
+                        <!-- Loading Indicator -->
+                        <div class="loading text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Searching...</span>
+                            </div>
+                            <p>Searching...</p>
+                        </div>
+
+                        <!-- Search Results -->
+                        <div id="search-results"></div>
+                    </div>
+                </div>
+
+                <!-- Performance Dashboard -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-line"></i> Performance Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="performance-metric">
+                                    <div class="metric-value" id="avg-response-time">0.0</div>
+                                    <div class="metric-label">Avg Response Time (ms)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="performance-metric">
+                                    <div class="metric-value" id="total-queries">0</div>
+                                    <div class="metric-label">Total Queries</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="performance-metric">
+                                    <div class="metric-value" id="success-rate">0%</div>
+                                    <div class="metric-label">Success Rate</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="performance-metric">
+                                    <div class="metric-value" id="cache-hit-rate">0%</div>
+                                    <div class="metric-label">Cache Hit Rate</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Performance Chart -->
+                        <div class="mt-4">
+                            <canvas id="performance-chart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="col-lg-4">
+                <!-- Query History -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-history"></i> Query History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="query-history" style="max-height: 300px; overflow-y: auto;">
+                            <p class="text-muted">No queries yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reverse Lookup -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-undo"></i> Reverse Lookup</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="reverse-input" 
+                                   placeholder="Enter column ID...">
+                            <button class="btn btn-outline-primary" type="button" id="reverse-btn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                        <div id="reverse-results"></div>
+                    </div>
+                </div>
+
+                <!-- Set Operations -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-sitemap"></i> Set Operations</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Operation:</label>
+                            <select class="form-select" id="operation-type">
+                                <option value="intersection">Intersection (AND)</option>
+                                <option value="union">Union (OR)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Words (comma-separated):</label>
+                            <input type="text" class="form-control" id="set-words" 
+                                   placeholder="date, start_date">
+                        </div>
+                        <button class="btn btn-outline-primary" type="button" id="set-operation-btn">
+                            <i class="fas fa-calculator"></i> Execute
+                        </button>
+                        <div id="set-operation-results" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <!-- System Status -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-heartbeat"></i> System Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="system-status">
+                            <p class="text-muted">Checking system status...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mapping Recreation -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-sync-alt"></i> Recreate Mappings</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Recreate mappings from database by running the complete process:</p>
+                        <ol class="text-muted small">
+                            <li>Run get_all_column_names.py to fetch column names from database</li>
+                            <li>Run csv_to_json.py to generate mappings JSON</li>
+                            <li>Reload the search engine with new mappings</li>
+                        </ol>
+                        <button class="btn btn-warning" type="button" id="recreate-mappings-btn">
+                            <i class="fas fa-sync-alt"></i> Recreate Mappings
+                        </button>
+                        <div id="recreate-mappings-results" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="frontend.js"></script>
+</body>
+</html>
