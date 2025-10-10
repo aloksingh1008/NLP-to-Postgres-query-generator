@@ -356,7 +356,10 @@ class SearchEngine:
                     else:
                         # Calculate confidence based on edit distance
                         max_len = max(len(normalized_query), len(normalized_word))
-                        confidence = 1.0 - (edit_distance / max_len) if max_len > 0 else 0.0
+                        if max_len > 0:
+                            confidence = max(0.0, 1.0 - (edit_distance / max_len))  # Ensure non-negative
+                        else:
+                            confidence = 0.0
                         match_type = "fuzzy_levenshtein"
                         changes = self.fuzzy_matcher.get_edit_operations(query, word)
                     

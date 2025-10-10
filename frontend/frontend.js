@@ -660,17 +660,11 @@ class SearchEngineDashboard {
 
     async processNaturalLanguageQuery() {
         const query = document.getElementById('nl-query-input').value.trim();
-        const apiKey = document.getElementById('openai-api-key').value.trim();
         const button = document.getElementById('nl-query-btn');
         const resultsContainer = document.getElementById('search-results');
         
         if (!query) {
             alert('Please enter a natural language query');
-            return;
-        }
-        
-        if (!apiKey) {
-            alert('Please enter your OpenAI API key');
             return;
         }
         
@@ -681,6 +675,7 @@ class SearchEngineDashboard {
         resultsContainer.innerHTML = `
             <div class="alert alert-info">
                 <i class="fas fa-spinner fa-spin"></i> Processing natural language query with AI...
+                <p class="small mb-0 mt-2">Using OpenAI API configured on the server...</p>
             </div>
         `;
 
@@ -691,8 +686,7 @@ class SearchEngineDashboard {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    query: query,
-                    openai_api_key: apiKey
+                    query: query
                 })
             });
 
@@ -807,7 +801,6 @@ class SearchEngineDashboard {
 
     clearNaturalLanguageQuery() {
         document.getElementById('nl-query-input').value = '';
-        document.getElementById('openai-api-key').value = '';
         document.getElementById('search-results').innerHTML = '';
     }
 }

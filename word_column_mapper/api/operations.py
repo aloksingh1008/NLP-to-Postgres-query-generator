@@ -5,6 +5,7 @@ import subprocess
 import json
 import time
 from typing import List
+from dotenv import load_dotenv
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -14,6 +15,9 @@ from ..core.engine import SearchEngine
 from ..models.response import SetOperationResponse, ErrorResponse
 from ..models.request import SetOperationRequest
 from ..config import get_settings
+
+# Load environment variables
+load_dotenv()
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 settings = get_settings()
@@ -486,9 +490,8 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
     Flow: Natural Language Query → ChatGPT → Relevant Words → Search Engine → Columns → Tables
     """
     try:
-        # Extract query and API key from request
+        # Extract query from request
         query = request.get('query', '').strip()
-        openai_api_key = request.get('openai_api_key', '').strip()
         
         if not query:
             return JSONResponse(
@@ -496,10 +499,16 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 content={"status": "error", "error": "Query is required"}
             )
         
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        
         if not openai_api_key:
             return JSONResponse(
-                status_code=400,
-                content={"status": "error", "error": "OpenAI API key is required"}
+                status_code=500,
+                content={
+                    "status": "error", 
+                    "error": "OpenAI API key not configured. Please set OPENAI_API_KEY in .env file"
+                }
             )
         
         # Initialize OpenAI client
