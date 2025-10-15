@@ -21,6 +21,51 @@ class FuzzyMatcher:
         """
         self.threshold = threshold
         self.normalizer = TextNormalizer()
+    
+    def weighted_edit_distance(self, s1: str, s2: str) -> int:
+        """
+        Calculate weighted edit distance with custom weights:
+        - Insert: weight 1
+        - Delete: weight 1  
+        - Replace: weight 2
+        
+        Args:
+            s1: First string
+            s2: Second string
+            
+        Returns:
+            Weighted edit distance
+        """
+        m, n = len(s1), len(s2)
+        
+        # Create a table to store results of subproblems
+        dp = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+        
+        # Initialize base cases
+        for i in range(m + 1):
+            dp[i][0] = i  # Delete operations (weight 1)
+        
+        for j in range(n + 1):
+            dp[0][j] = j  # Insert operations (weight 1)
+        
+        # Fill the dp table
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if s1[i-1] == s2[j-1]:
+                    # Characters match, no operation needed
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    # Choose minimum of:
+                    # 1. Delete from s1 (weight 1)
+                    # 2. Insert into s1 (weight 1) 
+                    # 3. Replace in s1 (weight 2)
+                    dp[i][j] = min(
+                        dp[i-1][j] + 1,      # Delete
+                        dp[i][j-1] + 1,      # Insert
+                        dp[i-1][j-1] + 2     # Replace
+                    )
+        
+        return dp[m][n]
         
     def find_best_match(
         self, 
@@ -139,10 +184,13 @@ class FuzzyMatcher:
         Returns:
             Tuple of (confidence, match_type, edit_distance)
         """
-        # Levenshtein distance
-        distance = Levenshtein.distance(query, candidate)
+        # Use weighted edit distance instead of standard Levenshtein
+        distance = self.weighted_edit_distance(query, candidate)
         max_len = max(len(query), len(candidate))
-        levenshtein_ratio = 1.0 - (distance / max_len) if max_len > 0 else 0.0
+        # Adjust ratio calculation for weighted distance
+        # Since replace operations have weight 2, we need to normalize differently
+        max_possible_distance = max_len * 2  # Worst case: all characters replaced
+        levenshtein_ratio = 1.0 - (distance / max_possible_distance) if max_possible_distance > 0 else 0.0
         
         # Partial ratio (for substring matches)
         partial_ratio = fuzz.partial_ratio(query, candidate) / 100.0
@@ -192,15 +240,16 @@ class FuzzyMatcher:
         if query == target:
             return "No changes"
         
-        # Simple edit distance analysis
-        distance = Levenshtein.distance(query, target)
+        # Use weighted edit distance for analysis
+        weighted_distance = self.weighted_edit_distance(query, target)
+        standard_distance = Levenshtein.distance(query, target)
         
         if len(query) < len(target):
-            return f"Insert {len(target) - len(query)} character(s)"
+            return f"Insert {len(target) - len(query)} character(s) (weighted distance: {weighted_distance})"
         elif len(query) > len(target):
-            return f"Delete {len(query) - len(target)} character(s)"
+            return f"Delete {len(query) - len(target)} character(s) (weighted distance: {weighted_distance})"
         else:
-            return f"Substitute {distance} character(s)"
+            return f"Substitute {standard_distance} character(s) (weighted distance: {weighted_distance})"
     
     def suggest_corrections(
         self, 

@@ -51,7 +51,7 @@ class SearchEngine:
         fuzzy_threshold: Optional[float] = None,
         max_results: int = 10,
         include_suggestions: bool = True,
-        max_edit_distance: int = 5
+        max_edit_distance: int = 10
     ) -> SearchResponse:
         """
         Search for columns matching a word query.
@@ -61,7 +61,7 @@ class SearchEngine:
             fuzzy_threshold: Custom fuzzy matching threshold
             max_results: Maximum number of results to return
             include_suggestions: Whether to include suggestions for no-match queries
-            max_edit_distance: Maximum edit distance for fuzzy matches (default: 5)
+            max_edit_distance: Maximum edit distance for fuzzy matches (default: 10)
             
         Returns:
             SearchResponse with results and metadata
@@ -327,22 +327,15 @@ class SearchEngine:
         if not all_words:
             return []
         
-        # Calculate edit distance for ALL words in the database
-        from rapidfuzz.distance import Levenshtein
+        # Calculate edit distance for ALL words in the database using weighted distance
         normalized_query = self.normalizer.normalize(query)
         
         results = []
         for word in all_words:
             normalized_word = self.normalizer.normalize(word)
             
-            # Calculate actual edit distance using Levenshtein
-            edit_distance = Levenshtein.distance(normalized_query, normalized_word)
-            
-            # Alternative: Count total character changes (insertions + deletions)
-            # This counts all operations, not just the optimized path
-            total_changes = abs(len(normalized_query) - len(normalized_word)) + Levenshtein.distance(normalized_query, normalized_word)
-            # Use the total changes as edit distance
-            edit_distance = total_changes
+            # Use weighted edit distance: insert/delete=1, replace=2
+            edit_distance = self.fuzzy_matcher.weighted_edit_distance(normalized_query, normalized_word)
             
             # Only include words with edit distance <= max_edit_distance
             if edit_distance <= max_edit_distance:
@@ -354,10 +347,12 @@ class SearchEngine:
                         match_type = "exact"
                         changes = None
                     else:
-                        # Calculate confidence based on edit distance
+                        # Calculate confidence based on weighted edit distance
                         max_len = max(len(normalized_query), len(normalized_word))
-                        confidence = 1.0 - (edit_distance / max_len) if max_len > 0 else 0.0
-                        match_type = "fuzzy_levenshtein"
+                        # For weighted distance, worst case is all characters replaced (weight 2)
+                        max_possible_distance = max_len * 2
+                        confidence = 1.0 - (edit_distance / max_possible_distance) if max_possible_distance > 0 else 0.0
+                        match_type = "fuzzy_weighted"
                         changes = self.fuzzy_matcher.get_edit_operations(query, word)
                     
                     result = SearchResult(
