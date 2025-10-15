@@ -160,11 +160,22 @@ class SearchEngineDashboard {
 
         html += `
             <div class="mt-3 p-3 bg-light rounded">
-                <h6><i class="fas fa-list"></i> All Unique Columns (${data.total_unique_columns.length})</h6>
-                <div class="column-list">${data.total_unique_columns.join(', ')}</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-list"></i> All Columns (${data.total_all_columns ? data.total_all_columns.length : data.total_unique_columns.length}) - Including Duplicates</h6>
+                        <div class="column-list" style="max-height: 150px; overflow-y: auto;">${data.total_all_columns ? data.total_all_columns.join(', ') : data.total_unique_columns.join(', ')}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-list"></i> Unique Columns (${data.total_unique_columns.length})</h6>
+                        <div class="column-list" style="max-height: 150px; overflow-y: auto;">${data.total_unique_columns.join(', ')}</div>
+                    </div>
+                </div>
                 <div class="mt-3">
-                    <button class="btn btn-info btn-sm" type="button" id="get-table-names-btn" data-columns='${JSON.stringify(data.total_unique_columns)}'>
-                        <i class="fas fa-table"></i> Get Table Names
+                    <button class="btn btn-info btn-sm me-2" type="button" id="get-table-names-btn-all" data-columns='${JSON.stringify(data.total_all_columns || data.total_unique_columns)}'>
+                        <i class="fas fa-table"></i> Get Table Names (All)
+                    </button>
+                    <button class="btn btn-secondary btn-sm" type="button" id="get-table-names-btn-unique" data-columns='${JSON.stringify(data.total_unique_columns)}'>
+                        <i class="fas fa-table"></i> Get Table Names (Unique)
                     </button>
                 </div>
             </div>
@@ -172,10 +183,15 @@ class SearchEngineDashboard {
 
         resultsContainer.innerHTML = html;
         
-        // Add event listener for the new button
-        document.getElementById('get-table-names-btn').addEventListener('click', (e) => {
+        // Add event listeners for the new buttons
+        document.getElementById('get-table-names-btn-all').addEventListener('click', (e) => {
             const columnIds = JSON.parse(e.target.getAttribute('data-columns'));
-            this.getTableNames(columnIds);
+            this.getTableNames(columnIds, 'get-table-names-btn-all');
+        });
+        
+        document.getElementById('get-table-names-btn-unique').addEventListener('click', (e) => {
+            const columnIds = JSON.parse(e.target.getAttribute('data-columns'));
+            this.getTableNames(columnIds, 'get-table-names-btn-unique');
         });
     }
 
@@ -582,8 +598,8 @@ class SearchEngineDashboard {
         }
     }
 
-    async getTableNames(columnIds) {
-        const button = document.getElementById('get-table-names-btn');
+    async getTableNames(columnIds, buttonId = 'get-table-names-btn-all') {
+        const button = document.getElementById(buttonId);
         const resultsContainer = document.getElementById('search-results');
         
         // Disable button and show loading
@@ -609,13 +625,22 @@ class SearchEngineDashboard {
                         <div class="row">
                             <div class="col-md-6">
                                 <p><strong>Total Tables:</strong> ${data.total_tables}</p>
+                                <p><strong>Unique Tables:</strong> ${data.unique_tables}</p>
                                 <p><strong>Columns Found:</strong> ${data.columns_found}/${data.total_columns_processed}</p>
                                 ${data.columns_not_found > 0 ? `<p class="text-warning"><strong>Columns Not Found:</strong> ${data.columns_not_found}</p>` : ''}
                             </div>
                         </div>
                         <div class="mt-3">
-                            <p><strong>All Table Names:</strong></p>
-                            <div class="column-list bg-light" style="max-height: 200px; overflow-y: auto;">${data.table_names.join(', ')}</div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>All Table Names (including duplicates):</strong></p>
+                                    <div class="column-list bg-light" style="max-height: 200px; overflow-y: auto;">${data.table_names.join(', ')}</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Unique Table Names:</strong></p>
+                                    <div class="column-list bg-light" style="max-height: 200px; overflow-y: auto;">${data.unique_table_names.join(', ')}</div>
+                                </div>
+                            </div>
                         </div>
                         ${data.not_found_columns.length > 0 ? `
                             <div class="mt-2">
@@ -713,14 +738,21 @@ class SearchEngineDashboard {
                         <hr>
                         <h6><i class="fas fa-chart-bar"></i> Summary:</h6>
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <p><strong>Words Processed:</strong> ${data.summary.total_words_processed}</p>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <p><strong>Total Columns:</strong> ${data.summary.total_columns_found}</p>
+                                <small class="text-muted">Unique: ${data.summary.unique_columns_found || 0}</small>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <p><strong>Total Tables:</strong> ${data.summary.total_tables_found}</p>
+                                <small class="text-muted">Unique: ${data.summary.unique_tables_found || 0}</small>
+                            </div>
+                            <div class="col-md-3">
+                                <p><strong>Duplicates:</strong></p>
+                                <small class="text-muted">Columns: ${data.summary.total_columns_found - (data.summary.unique_columns_found || 0)}</small><br>
+                                <small class="text-muted">Tables: ${data.summary.total_tables_found - (data.summary.unique_tables_found || 0)}</small>
                             </div>
                         </div>
                     </div>
@@ -742,17 +774,19 @@ class SearchEngineDashboard {
                                     <div class="col-md-6">
                                         <p><strong>Search Results:</strong> ${result.total_results}</p>
                                         <p><strong>Columns Found:</strong> ${result.columns.length}</p>
+                                        <small class="text-muted">Unique: ${[...new Set(result.columns)].length}</small><br>
                                         <p><strong>Tables Found:</strong> ${result.tables.length}</p>
+                                        <small class="text-muted">Unique: ${[...new Set(result.tables)].length}</small><br>
                                         <p><strong>Search Time:</strong> ${result.search_time_ms.toFixed(2)}ms</p>
                                         ${result.error ? `<p class="text-danger"><strong>Error:</strong> ${result.error}</p>` : ''}
                                     </div>
                                     <div class="col-md-6">
                                         ${result.columns.length > 0 ? `
-                                            <p><strong>Columns:</strong></p>
+                                            <p><strong>Columns (including duplicates):</strong></p>
                                             <div class="column-list" style="max-height: 100px; overflow-y: auto;">${result.columns.slice(0, 10).join(', ')}${result.columns.length > 10 ? '...' : ''}</div>
                                         ` : ''}
                                         ${result.tables.length > 0 ? `
-                                            <p class="mt-2"><strong>Tables:</strong></p>
+                                            <p class="mt-2"><strong>Tables (including duplicates):</strong></p>
                                             <div class="column-list bg-info bg-opacity-10">${result.tables.join(', ')}</div>
                                         ` : ''}
                                     </div>
@@ -768,12 +802,24 @@ class SearchEngineDashboard {
                         <h6><i class="fas fa-list"></i> Final Results</h6>
                         <div class="row">
                             <div class="col-md-6">
-                                <p><strong>All Unique Columns (${data.summary.all_columns.length}):</strong></p>
-                                <div class="column-list bg-white" style="max-height: 150px; overflow-y: auto;">${data.summary.all_columns.join(', ')}</div>
+                                <div class="mb-3">
+                                    <p><strong>All Columns (${data.summary.all_columns.length}) - Including Duplicates:</strong></p>
+                                    <div class="column-list bg-white" style="max-height: 150px; overflow-y: auto;">${data.summary.all_columns.join(', ')}</div>
+                                </div>
+                                <div>
+                                    <p><strong>Unique Columns (${data.summary.unique_columns_found || 0}):</strong></p>
+                                    <div class="column-list bg-light" style="max-height: 100px; overflow-y: auto;">${[...new Set(data.summary.all_columns)].join(', ')}</div>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <p><strong>All Unique Tables (${data.summary.all_tables.length}):</strong></p>
-                                <div class="column-list bg-white" style="max-height: 150px; overflow-y: auto;">${data.summary.all_tables.join(', ')}</div>
+                                <div class="mb-3">
+                                    <p><strong>All Tables (${data.summary.all_tables.length}) - Including Duplicates:</strong></p>
+                                    <div class="column-list bg-white" style="max-height: 150px; overflow-y: auto;">${data.summary.all_tables.join(', ')}</div>
+                                </div>
+                                <div>
+                                    <p><strong>Unique Tables (${data.summary.unique_tables_found || 0}):</strong></p>
+                                    <div class="column-list bg-light" style="max-height: 100px; overflow-y: auto;">${[...new Set(data.summary.all_tables)].join(', ')}</div>
+                                </div>
                             </div>
                         </div>
                     </div>

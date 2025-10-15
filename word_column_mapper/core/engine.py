@@ -99,10 +99,13 @@ class SearchEngine:
             
             self._stats["total_execution_time"] += execution_time
             
-            # Collect all unique columns
-            all_columns = set()
+            # Collect all columns (including duplicates)
+            all_columns = []
             for result in all_results:
-                all_columns.update(result.columns)
+                all_columns.extend(result.columns)  # Keep duplicates
+            
+            # Also collect unique columns for backward compatibility
+            unique_columns = list(set(all_columns))
             
             return SearchResponse(
                 query=query,
@@ -110,7 +113,8 @@ class SearchEngine:
                 exact_match=has_exact_match,
                 total_results=len(all_results),
                 results=all_results,
-                total_unique_columns=list(all_columns),
+                total_unique_columns=unique_columns,  # Keep unique for backward compatibility
+                total_all_columns=all_columns,  # All columns including duplicates
                 cache_hit=False,
                 suggestions=None
             )
@@ -131,6 +135,7 @@ class SearchEngine:
             total_results=0,
             results=[],
             total_unique_columns=[],
+            total_all_columns=[],
             cache_hit=False,
             suggestions=suggestions
         )

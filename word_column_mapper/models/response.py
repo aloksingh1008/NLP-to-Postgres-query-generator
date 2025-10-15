@@ -26,6 +26,7 @@ class SearchResponse(BaseModel):
     total_results: int = Field(..., description="Total number of results")
     results: List[SearchResult] = Field(..., description="Search results")
     total_unique_columns: List[str] = Field(..., description="All unique columns from results")
+    total_all_columns: List[str] = Field(..., description="All columns from results including duplicates")
     cache_hit: bool = Field(..., description="Whether result was served from cache")
     suggestions: Optional[List[str]] = Field(None, description="Alternative suggestions if no match")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")

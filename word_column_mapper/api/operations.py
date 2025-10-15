@@ -570,8 +570,8 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 search_result = search_engine.search(word, include_suggestions=True)
                 word_time = (time.time() - word_start) * 1000
                 
-                # Get table names for the columns
-                if search_result and hasattr(search_result, 'total_unique_columns') and search_result.total_unique_columns:
+                # Get table names for the columns (using all columns including duplicates)
+                if search_result and hasattr(search_result, 'total_all_columns') and search_result.total_all_columns:
                     table_start = time.time()
                     try:
                         # Get table names using the existing endpoint logic
@@ -583,9 +583,9 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                                 column_table_mapping = json.load(f)
                             
                             word_tables = []
-                            for column_id in search_result.total_unique_columns:
+                            for column_id in search_result.total_all_columns:  # Use all columns including duplicates
                                 if column_id in column_table_mapping:
-                                    word_tables.append(column_table_mapping[column_id])
+                                    word_tables.append(column_table_mapping[column_id])  # Keep duplicate tables
                             
                             table_time = (time.time() - table_start) * 1000
                         else:
@@ -610,7 +610,7 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                         "cache_hit": search_result.cache_hit if hasattr(search_result, 'cache_hit') else False,
                         "suggestions": search_result.suggestions if hasattr(search_result, 'suggestions') else None
                     },
-                    "columns": search_result.total_unique_columns if hasattr(search_result, 'total_unique_columns') else [],
+                    "columns": search_result.total_all_columns if hasattr(search_result, 'total_all_columns') else [],
                     "tables": word_tables,
                     "search_time_ms": word_time,
                     "table_time_ms": table_time,
@@ -618,7 +618,7 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 }
                 
                 search_results.append(word_result)
-                all_columns.extend(search_result.total_unique_columns if hasattr(search_result, 'total_unique_columns') else [])
+                all_columns.extend(search_result.total_all_columns if hasattr(search_result, 'total_all_columns') else [])
                 all_tables.extend(word_tables)
                 
             except Exception as e:
@@ -631,9 +631,13 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                     "total_results": 0
                 })
         
-        # Remove duplicates from all columns and tables
-        all_columns = list(set(all_columns))
-        all_tables = list(set(all_tables))
+        # Keep all columns and tables including duplicates
+        # all_columns = list(set(all_columns))  # Removed to keep duplicates
+        # all_tables = list(set(all_tables))    # Removed to keep duplicates
+        
+        # Also provide unique versions for comparison
+        unique_columns = list(set(all_columns))
+        unique_tables = list(set(all_tables))
         
         return JSONResponse(
             status_code=200,
@@ -647,6 +651,8 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                     "total_words_processed": len(relevant_words),
                     "total_columns_found": len(all_columns),
                     "total_tables_found": len(all_tables),
+                    "unique_columns_found": len(unique_columns),
+                    "unique_tables_found": len(unique_tables),
                     "all_columns": all_columns,
                     "all_tables": all_tables
                 }
