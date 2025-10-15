@@ -30,6 +30,27 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### Environment Configuration
+
+Create a `.env` file in the project root directory:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+```
+
+Edit `.env` and add your API keys:
+
+```env
+# OpenAI API Configuration
+OPENAI_API_KEY=your_actual_openai_api_key_here
+
+# Database Configuration (if needed)
+# DATABASE_URL=postgresql://username:password@localhost:5432/database_name
+```
+
+**Important:** Never commit the `.env` file to version control. It's already included in `.gitignore`.
+
 ### Running the Application
 
 ```bash

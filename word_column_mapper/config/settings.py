@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -12,54 +12,57 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
     # Application
-    app_name: str = Field(default="Word Column Mapper", env="APP_NAME")
-    app_version: str = Field(default="1.0.0", env="APP_VERSION")
-    debug: bool = Field(default=False, env="DEBUG")
+    app_name: str = Field(default="Word Column Mapper")
+    app_version: str = Field(default="1.0.0")
+    debug: bool = Field(default=False)
     
     # Server
-    host: str = Field(default="0.0.0.0", env="HOST")
-    port: int = Field(default=8000, env="PORT")
-    workers: int = Field(default=1, env="WORKERS")
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    workers: int = Field(default=1)
     
     # Redis Configuration
-    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
-    redis_password: Optional[str] = Field(default=None, env="REDIS_PASSWORD")
-    redis_max_connections: int = Field(default=10, env="REDIS_MAX_CONNECTIONS")
+    redis_url: str = Field(default="redis://localhost:6379/0")
+    redis_password: Optional[str] = Field(default=None)
+    redis_max_connections: int = Field(default=10)
     
     # Cache Configuration
-    cache_ttl: int = Field(default=3600, env="CACHE_TTL")  # 1 hour
-    cache_max_size: int = Field(default=10000, env="CACHE_MAX_SIZE")
-    enable_cache: bool = Field(default=True, env="ENABLE_CACHE")
+    cache_ttl: int = Field(default=3600)  # 1 hour
+    cache_max_size: int = Field(default=10000)
+    enable_cache: bool = Field(default=True)
     
     # Search Configuration
-    fuzzy_threshold: float = Field(default=0.6, env="FUZZY_THRESHOLD")
-    max_results: int = Field(default=10, env="MAX_RESULTS")
-    max_query_length: int = Field(default=100, env="MAX_QUERY_LENGTH")
-    enable_phonetic: bool = Field(default=False, env="ENABLE_PHONETIC")
+    fuzzy_threshold: float = Field(default=0.6)
+    max_results: int = Field(default=10)
+    max_query_length: int = Field(default=100)
+    enable_phonetic: bool = Field(default=False)
     
     # Performance
-    max_concurrent_requests: int = Field(default=100, env="MAX_CONCURRENT_REQUESTS")
-    request_timeout: int = Field(default=30, env="REQUEST_TIMEOUT")
+    max_concurrent_requests: int = Field(default=100)
+    request_timeout: int = Field(default=30)
     
     # Logging
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
-    log_format: str = Field(default="json", env="LOG_FORMAT")
+    log_level: str = Field(default="INFO")
+    log_format: str = Field(default="json")
     
     # CORS
     cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8080", "http://localhost:8000"],
-        env="CORS_ORIGINS"
+        default=["http://localhost:3000", "http://localhost:8080", "http://localhost:8000"]
     )
     
     # Security
-    secret_key: str = Field(default="your-secret-key-change-in-production", env="SECRET_KEY")
-    api_key_header: str = Field(default="X-API-Key", env="API_KEY_HEADER")
+    secret_key: str = Field(default="your-secret-key-change-in-production")
+    api_key_header: str = Field(default="X-API-Key")
     
-    class Config:
-        """Pydantic configuration."""
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # OpenAI (optional, for future features)
+    openai_api_key: Optional[str] = Field(default=None)
+    
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"  # Ignore extra environment variables
+    )
 
 
 @lru_cache()
