@@ -9,12 +9,14 @@ from dotenv import load_dotenv
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
-import openai
+from anthropic import Anthropic
 
 from ..core.engine import SearchEngine
 from ..models.response import SetOperationResponse, ErrorResponse
 from ..models.request import SetOperationRequest
 from ..config import get_settings
+from ..table_frequency_ranker import TableFrequencyRanker
+from ..table_relationship_traversal import TableRelationshipTraversal
 
 # Load environment variables
 load_dotenv()
@@ -24,6 +26,14 @@ settings = get_settings()
 
 # Import the global search engine instance
 from ..engine_instance import search_engine
+
+# Initialize table frequency ranker
+table_ranker = TableFrequencyRanker()
+
+# Initialize table relationship traversal
+base_dir = os.path.dirname(os.path.dirname(__file__))
+schema_file = os.path.join(base_dir, "form_table_schema.json")
+table_traversal = TableRelationshipTraversal(schema_file, debug=True)  # Enable debug
 
 
 @router.get(
@@ -480,14 +490,14 @@ async def get_table_names(column_ids: List[str]) -> JSONResponse:
 @router.post(
     "/natural-language-query",
     summary="Process natural language query to get columns and tables",
-    description="Convert natural language query to relevant words using ChatGPT, then get columns and tables for each word"
+    description="Convert natural language query to relevant words using Claude AI, then get columns and tables for each word"
 )
 async def process_natural_language_query(request: dict) -> JSONResponse:
     """
-    Process natural language query through ChatGPT to extract relevant words,
+    Process natural language query through Claude AI to extract relevant words,
     then search for columns and tables for each word.
     
-    Flow: Natural Language Query → ChatGPT → Relevant Words → Search Engine → Columns → Tables
+    Flow: Natural Language Query → Claude → Relevant Words → Search Engine → Columns → Tables
     """
     try:
         # Extract query from request
@@ -499,53 +509,59 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 content={"status": "error", "error": "Query is required"}
             )
         
-        # Get OpenAI API key from environment
-        openai_api_key = os.getenv('OPENAI_API_KEY')
+        # Get Anthropic API key
+        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
         
-        if not openai_api_key:
+        # Validate API key
+        if not anthropic_api_key:
             return JSONResponse(
                 status_code=500,
                 content={
                     "status": "error", 
-                    "error": "OpenAI API key not configured. Please set OPENAI_API_KEY in .env file"
+                    "error": "Anthropic API key not configured. Please set ANTHROPIC_API_KEY in .env file"
                 }
             )
         
-        # Initialize OpenAI client
-        client = openai.OpenAI(api_key=openai_api_key)
+        # Prompt for Claude
+        claude_prompt = f"""
+Extract relevant keywords and potential related words from the following natural language query for a PostgreSQL database search.
+
+Natural Language Query: "{query}"
+
+Instructions:
+1. Extract all important nouns, noun phrases, and key terms from the query
+2. Include potential synonyms, related terms, or alternative words that might be used in database column names
+3. Consider abbreviations, full forms, and variations of the words
+4. Think about what database columns or fields might be relevant to this query
+5. Return ONLY a JSON array of strings, nothing else
+
+Example:
+Query: "Show me employees with salary above 50000"
+Output: ["employee", "employees", "emp", "staff", "worker", "salary", "sal", "wage", "compensation", "pay", "income", "50000", "amount"]
+
+Now extract keywords from the query above and return only the JSON array:
+            """
         
-        # Step 1: Extract relevant words using ChatGPT
-        chatgpt_prompt = f"""
-        You are a database expert. Given a natural language query, extract the most relevant and essential words that would be needed to write a PostgreSQL query.
-
-        Natural Language Query: "{query}"
-
-        Please return ONLY a JSON array of relevant words. Each word should be:
-        - Essential for the database query
-        - Related to database fields, tables, or operations
-        - Clean and meaningful (no stop words like "the", "and", "or")
-        - In singular form when possible
-        - Maximum 10 words
-
-        Example format: ["user", "email", "date", "status", "amount"]
-
-        Return only the JSON array, no other text:
-        """
+        print(claude_prompt)
         
-        chatgpt_start = time.time()
+        claude_start = time.time()
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+            # Initialize Anthropic client
+            client = Anthropic(api_key=anthropic_api_key)
+            
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=250,
+                temperature=0.2,
+                system="You are a PostgreSQL database expert. Extract relevant nouns and noun phrases from natural language queries. Always return valid JSON arrays.",
                 messages=[
-                    {"role": "system", "content": "You are a database expert who extracts relevant words from natural language queries for PostgreSQL."},
-                    {"role": "user", "content": chatgpt_prompt}
-                ],
-                max_tokens=200,
-                temperature=0.3
+                    {"role": "user", "content": claude_prompt}
+                ]
             )
             
-            chatgpt_time = (time.time() - chatgpt_start) * 1000
-            relevant_words_text = response.choices[0].message.content.strip()
+            relevant_words_text = response.content[0].text.strip()
+            
+            claude_time = (time.time() - claude_start) * 1000
             
             # Parse the JSON response
             try:
@@ -562,8 +578,8 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 status_code=500,
                 content={
                     "status": "error",
-                    "error": f"ChatGPT API error: {str(e)}",
-                    "step": "chatgpt_extraction"
+                    "error": f"Claude API error: {str(e)}",
+                    "step": "claude_extraction"
                 }
             )
         
@@ -648,14 +664,138 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
         unique_columns = list(set(all_columns))
         unique_tables = list(set(all_tables))
         
+        # Step 3: Use TableFrequencyRanker to analyze table distribution
+        ranking_start = time.time()
+        table_analysis = {}
+        
+        try:
+            # Prepare search results in the format expected by TableFrequencyRanker
+            ranker_input = []
+            for result in search_results:
+                if result.get("tables"):
+                    ranker_input.append({
+                        "keyword": result["word"],
+                        "tables": result["tables"]
+                    })
+            
+            # Analyze table distribution with cross-keyword relevance
+            if ranker_input:
+                table_analysis = table_ranker.analyze_distribution(
+                    ranker_input, 
+                    top_n=5,  # Get top 5 for display purposes
+                    use_fast_sort=False  # MUST be False to get all_rankings populated with ALL tables
+                )
+            
+            ranking_time = (time.time() - ranking_start) * 1000
+        except Exception as e:
+            ranking_time = (time.time() - ranking_start) * 1000
+            table_analysis = {
+                "error": str(e),
+                "top_tables": [],
+                "total_unique_tables": 0,
+                "total_occurrences": 0
+            }
+        
+        # Step 4: Run Table Relationship Traversal Algorithm (BFS)
+        traversal_start = time.time()
+        relationship_analysis = {}
+        relevant_tables_with_relationships = []
+        
+        try:
+            # Get only the top-ranked table(s) from the ranking results
+            # Include ALL tables that have the SAME FREQUENCY as rank #1
+            # (regardless of keyword count)
+            top_ranked_tables = {}
+            if table_analysis and table_analysis.get("all_rankings"):
+                # Use all_rankings to get ALL tables
+                all_rankings = table_analysis["all_rankings"]
+                
+                if all_rankings:
+                    # Get the maximum frequency from the first (top) table
+                    first_table = all_rankings[0]
+                    max_frequency = first_table.get("frequency", 0)
+                    
+                    print(f"\n🔍 DEBUG: Total tables in all_rankings = {len(all_rankings)}")
+                    print(f"🔍 DEBUG: Maximum frequency (from top table) = {max_frequency}")
+                    print(f"🔍 DEBUG: First table = {first_table.get('table')}")
+                    print(f"\n🔍 DEBUG: Finding ALL tables with frequency = {max_frequency}...")
+                    
+                    # Include ALL tables that have the SAME FREQUENCY as the top table
+                    for i, table_info in enumerate(all_rankings):
+                        current_frequency = table_info.get("frequency", 0)
+                        table_name = table_info["table"]
+                        
+                        if current_frequency == max_frequency:
+                            frequency = all_tables.count(table_name)
+                            top_ranked_tables[table_name] = frequency
+                            print(f"   ✅ Added {table_name} with frequency {frequency}")
+                    
+                    print(f"\n🔍 DEBUG: Total tables with max frequency: {len(top_ranked_tables)}")
+                    print(f"🔍 DEBUG: Top ranked tables = {top_ranked_tables}")
+            
+            if top_ranked_tables:
+                # Run BFS traversal starting ONLY from top-ranked tables
+                relevant_tables_with_relationships = table_traversal.traverse_relationships(
+                    top_ranked_tables,
+                    max_depth=10000  # Very high limit (essentially unlimited)
+                )
+                
+                # Separate original tables from related tables
+                original_tables = list(top_ranked_tables.keys())  # Only top-ranked starting tables
+                related_tables = [t for t in relevant_tables_with_relationships if t not in original_tables]
+                
+                relationship_analysis = {
+                    "max_frequency": max(top_ranked_tables.values()) if top_ranked_tables else 0,
+                    "tables_with_max_frequency": list(top_ranked_tables.keys()),
+                    "original_tables": original_tables,
+                    "related_tables": related_tables,
+                    "all_relevant_tables": relevant_tables_with_relationships,
+                    "total_original_tables": len(original_tables),
+                    "total_related_tables": len(related_tables),
+                    "total_relevant_tables": len(relevant_tables_with_relationships),
+                    "traversal_enabled": True
+                }
+            else:
+                relationship_analysis = {
+                    "max_frequency": 0,
+                    "tables_with_max_frequency": [],
+                    "original_tables": [],
+                    "related_tables": [],
+                    "all_relevant_tables": [],
+                    "total_original_tables": 0,
+                    "total_related_tables": 0,
+                    "total_relevant_tables": 0,
+                    "traversal_enabled": True,
+                    "note": "No tables found to traverse"
+                }
+            
+            traversal_time = (time.time() - traversal_start) * 1000
+        except Exception as e:
+            traversal_time = (time.time() - traversal_start) * 1000
+            relationship_analysis = {
+                "error": str(e),
+                "traversal_enabled": True,
+                "max_frequency": 0,
+                "original_tables": list(set(all_tables)) if all_tables else [],
+                "related_tables": [],
+                "all_relevant_tables": list(set(all_tables)) if all_tables else [],
+                "total_original_tables": len(set(all_tables)) if all_tables else 0,
+                "total_related_tables": 0,
+                "total_relevant_tables": len(set(all_tables)) if all_tables else 0
+            }
+        
         return JSONResponse(
             status_code=200,
             content={
                 "status": "success",
                 "original_query": query,
                 "relevant_words": relevant_words,
-                "chatgpt_time_ms": chatgpt_time,
+                "claude_time_ms": claude_time,
                 "search_results": search_results,
+                "table_ranking": table_analysis,
+                "ranking_time_ms": ranking_time,
+                "relationship_traversal": relationship_analysis,
+                "traversal_time_ms": traversal_time,
                 "summary": {
                     "total_words_processed": len(relevant_words),
                     "total_columns_found": len(all_columns),
@@ -675,5 +815,112 @@ async def process_natural_language_query(request: dict) -> JSONResponse:
                 "status": "error",
                 "error": str(e),
                 "original_query": query if 'query' in locals() else ""
+            }
+        )
+
+
+@router.post(
+    "/table-ranking",
+    summary="Analyze and rank tables by frequency and cross-keyword relevance",
+    description="Analyze table distribution across search results and rank by cross-keyword relevance"
+)
+async def analyze_table_ranking(request: dict) -> JSONResponse:
+    """
+    Analyze and rank tables from search results.
+    
+    This endpoint takes search results (keyword → tables mapping) and provides:
+    - Tables ranked by cross-keyword relevance
+    - Frequency analysis
+    - Tables appearing across multiple keywords are prioritized
+    
+    Request format:
+    {
+        "search_results": [
+            {"keyword": "customer", "tables": ["customers", "orders"]},
+            {"keyword": "order", "tables": ["orders", "order_items"]}
+        ],
+        "top_n": 5,  // Optional, default 5
+        "min_keywords": 1  // Optional, default 1
+    }
+    """
+    try:
+        search_results = request.get('search_results', [])
+        top_n = request.get('top_n', 5)
+        min_keywords = request.get('min_keywords', 1)
+        
+        if not search_results:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "error": "search_results is required and cannot be empty"
+                }
+            )
+        
+        start_time = time.time()
+        
+        # Analyze table distribution
+        analysis = table_ranker.analyze_distribution(
+            search_results=search_results,
+            top_n=top_n,
+            use_fast_sort=True
+        )
+        
+        # Get cross-keyword rankings
+        rankings = table_ranker.rank_by_cross_keyword_relevance(
+            search_results=search_results,
+            min_keywords=min_keywords
+        )
+        
+        execution_time = (time.time() - start_time) * 1000
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "analysis": analysis,
+                "execution_time_ms": execution_time
+            }
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": str(e)
+            }
+        )
+
+
+@router.get(
+    "/table-coverage/{table_name}",
+    summary="Get keyword coverage for a specific table",
+    description="Get detailed information about which keywords map to a specific table"
+)
+async def get_table_coverage(table_name: str) -> JSONResponse:
+    """
+    Get keyword coverage for a specific table.
+    
+    This endpoint returns detailed information about which keywords
+    are associated with a given table.
+    """
+    try:
+        # This endpoint requires context from a previous search
+        # In a production system, you might want to store this in cache or session
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "info",
+                "message": "This endpoint requires search context. Use /table-ranking with search_results first."
+            }
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": str(e)
             }
         )

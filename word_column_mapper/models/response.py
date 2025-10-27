@@ -86,3 +86,34 @@ class MetricsResponse(BaseModel):
     active_connections: int = Field(..., description="Active connections")
     memory_usage_mb: float = Field(..., description="Memory usage in MB")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Metrics timestamp")
+
+
+class TableRankingItem(BaseModel):
+    """Individual table ranking information."""
+    
+    table: str = Field(..., description="Table name")
+    frequency: int = Field(..., description="Number of times table appears")
+    percentage: float = Field(..., description="Percentage of total occurrences")
+    keyword_count: int = Field(..., description="Number of keywords that map to this table")
+    contributing_keywords: List[str] = Field(..., description="Keywords that contribute to this table")
+
+
+class TableRankingSummary(BaseModel):
+    """Summary statistics for table ranking."""
+    
+    average_keywords_per_table: float = Field(..., description="Average keywords per table")
+    tables_across_multiple_keywords: int = Field(..., description="Count of tables appearing in multiple keywords")
+    multi_keyword_percentage: float = Field(..., description="Percentage of multi-keyword tables")
+
+
+class TableRankingResponse(BaseModel):
+    """Response for table frequency ranking analysis."""
+    
+    status: str = Field(..., description="Response status")
+    total_unique_tables: int = Field(..., description="Total unique tables found")
+    total_occurrences: int = Field(..., description="Total table occurrences including duplicates")
+    top_tables: List[TableRankingItem] = Field(..., description="Top N most relevant tables")
+    all_rankings: Optional[List[TableRankingItem]] = Field(None, description="Complete ranking list")
+    summary: TableRankingSummary = Field(..., description="Summary statistics")
+    execution_time_ms: float = Field(..., description="Execution time in milliseconds")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")

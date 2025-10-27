@@ -20,6 +20,7 @@ from .api import (
     health_router,
     metrics_router,
 )
+from .api.sql_generation import sql_router
 from .config import get_settings
 from .engine_instance import search_engine
 from .models.response import ErrorResponse
@@ -163,6 +164,7 @@ app.include_router(reverse_router)
 app.include_router(operations_router)
 app.include_router(health_router)
 app.include_router(metrics_router)
+app.include_router(sql_router)  # SQL Generation with MCP
 
 
 # Root endpoint
